@@ -1,11 +1,11 @@
 """
-Taş-Kağıt-Makas — YOLO ile Gerçek Zamanlı El Hareketi Tanıma
-=============================================================
-Webcam üzerinden el hareketlerini algılayıp bilgisayara karşı oynayan oyun.
+Rock-Paper-Scissors — Real-Time Hand Gesture Recognition with YOLO
+===================================================================
+A game that detects hand gestures via webcam and plays against the computer.
 
-Kontroller:
-    Q : Çıkış
-    R : Skoru sıfırla
+Controls:
+    Q : Quit
+    R : Reset score
 """
 
 import cv2
@@ -14,92 +14,95 @@ import time
 from ultralytics import YOLO
 
 
-# ---------- Ayarlar ----------
-MODEL_YOLU = "best.pt"
-KAMERA_INDEX = 0
-GUVEN_ESIGI = 0.6
-BEKLEME_SURESI = 2  # saniye
+# ---------- Settings ----------
+MODEL_PATH = "best.pt"
+CAMERA_INDEX = 0
+CONFIDENCE_THRESHOLD = 0.6
+COOLDOWN_TIME = 2  # seconds
 
-# ---------- Model ve kamera ----------
-model = YOLO(MODEL_YOLU)
-cap = cv2.VideoCapture(KAMERA_INDEX)
+# ---------- Model and camera ----------
+model = YOLO(MODEL_PATH)
+cap = cv2.VideoCapture(CAMERA_INDEX)
 
-# ---------- Oyun durumu ----------
-skor = {"Oyuncu": 0, "Bilgisayar": 0}
-secenekler = ["tas", "kagit", "makas"]
-son_oyun_zamani = 0
-bilgisayar = None
-sonuc = None
-
-
-def kim_kazanir(oyuncu, bilgisayar):
-    """Oyun sonucunu belirler ve skoru günceller."""
-    if oyuncu == bilgisayar:
-        return "Berabere"
-
-    kazanan_durumlar = [("tas", "makas"), ("kagit", "tas"), ("makas", "kagit")]
-    if (oyuncu, bilgisayar) in kazanan_durumlar:
-        skor["Oyuncu"] += 1
-        return "Kazandin"
-
-    skor["Bilgisayar"] += 1
-    return "Kaybettin"
+# ---------- Game state ----------
+# NOTE: The class names below ("tas", "kagit", "makas") match the labels
+# used when training the YOLO model. Do not rename them unless you retrain
+# the model with English labels.
+score = {"Player": 0, "Computer": 0}
+choices = ["tas", "kagit", "makas"]  # rock, paper, scissors
+last_game_time = 0
+computer_choice = None
+result = None
 
 
-# ---------- Ana döngü ----------
+def get_winner(player, computer):
+    """Determine the round result and update the score."""
+    if player == computer:
+        return "Draw"
+
+    winning_combinations = [("tas", "makas"), ("kagit", "tas"), ("makas", "kagit")]
+    if (player, computer) in winning_combinations:
+        score["Player"] += 1
+        return "You Win!"
+
+    score["Computer"] += 1
+    return "You Lose!"
+
+
+# ---------- Main loop ----------
 while True:
     ret, frame = cap.read()
     if not ret:
         break
 
     frame = cv2.flip(frame, 1)
-    results = model(frame, verbose=False)[0]
+    detections = model(frame, verbose=False)[0]
 
-    oyuncu_secimi = None
-    for result in results.boxes.data.tolist():
-        x1, y1, x2, y2, score, class_id = result
-        if score > GUVEN_ESIGI:
+    player_choice = None
+    for detection in detections.boxes.data.tolist():
+        x1, y1, x2, y2, conf, class_id = detection
+        if conf > CONFIDENCE_THRESHOLD:
             x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
-            class_name = results.names[int(class_id)].lower()
+            class_name = detections.names[int(class_id)].lower()
 
-            if class_name in secenekler:
-                oyuncu_secimi = class_name
+            if class_name in choices:
+                player_choice = class_name
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                 cv2.putText(frame, class_name.upper(), (x1, y1 - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
                 break
 
-    suanki_zaman = time.time()
-    if oyuncu_secimi and (suanki_zaman - son_oyun_zamani > BEKLEME_SURESI):
-        bilgisayar = random.choice(secenekler)
-        sonuc = kim_kazanir(oyuncu_secimi, bilgisayar)
-        son_oyun_zamani = suanki_zaman
+    current_time = time.time()
+    if player_choice and (current_time - last_game_time > COOLDOWN_TIME):
+        computer_choice = random.choice(choices)
+        result = get_winner(player_choice, computer_choice)
+        last_game_time = current_time
 
-    if bilgisayar and (suanki_zaman - son_oyun_zamani < BEKLEME_SURESI):
-        cv2.putText(frame, f"Bilgisayar: {bilgisayar}", (10, 50),
+    if computer_choice and (current_time - last_game_time < COOLDOWN_TIME):
+        cv2.putText(frame, f"Computer: {computer_choice}", (10, 50),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
-        cv2.putText(frame, f"Sonuc: {sonuc}", (10, 100),
+        cv2.putText(frame, f"Result: {result}", (10, 100),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-        kalan = BEKLEME_SURESI - (suanki_zaman - son_oyun_zamani)
-        cv2.putText(frame, f"Yeni oyun: {kalan:.1f} sn", (10, 150),
+        remaining = COOLDOWN_TIME - (current_time - last_game_time)
+        cv2.putText(frame, f"Next round: {remaining:.1f}s", (10, 150),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (200, 200, 200), 2)
     else:
-        cv2.putText(frame, "Elinizi gosterin!", (10, 50),
+        cv2.putText(frame, "Show your hand!", (10, 50),
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
     cv2.putText(frame,
-                f"Skor - Sen: {skor['Oyuncu']}  PC: {skor['Bilgisayar']}",
+                f"Score - You: {score['Player']}  PC: {score['Computer']}",
                 (10, frame.shape[0] - 20),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-    cv2.imshow("Tas Kagit Makas", frame)
+    cv2.imshow("Rock Paper Scissors", frame)
 
     key = cv2.waitKey(1) & 0xFF
     if key == ord("q"):
         break
     elif key == ord("r"):
-        skor = {"Oyuncu": 0, "Bilgisayar": 0}
+        score = {"Player": 0, "Computer": 0}
 
 cap.release()
 cv2.destroyAllWindows()
