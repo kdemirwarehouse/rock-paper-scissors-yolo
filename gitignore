@@ -7,7 +7,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 
-# Sanal ortam
+# Virtual environment
 venv/
 env/
 ENV/
@@ -24,16 +24,16 @@ ENV/
 .ipynb_checkpoints/
 *.ipynb
 
-# YOLO / Model çıktıları
+# YOLO / Model outputs
 runs/
 *.cache
 yolov8*.pt
 !best.pt
 
-# Loglar
+# Logs
 *.log
 
-# Dataset (büyük olabilir)
+# Dataset (can be large)
 dataset/
 data/
 images/
